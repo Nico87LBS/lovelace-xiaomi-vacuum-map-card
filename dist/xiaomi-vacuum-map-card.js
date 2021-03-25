@@ -11,6 +11,9 @@ import {
     texts
 } from './texts.js'
 
+import { hasConfigOrEntityChanged, fireEvent } from 'custom-card-helpers';
+import get from 'lodash.get';
+
 const LitElement = Object.getPrototypeOf(
     customElements.get("ha-panel-lovelace")
 );
@@ -225,7 +228,93 @@ class XiaomiVacuumMapCard extends LitElement {
             }
         };
     }
+    
+    handleMore() {
+      fireEvent(
+        this,
+        'hass-more-info',
+        {
+          entityId: this.entity.entity_id,
+        },
+        {
+          bubbles: true,
+          composed: true,
+        }
+      );
+    }
+    
+    get entity() {
+      return this._hass.states[this.config.entity];
+    }
+    
+    getAttributes(entity) {
+    const {
+      status,
+      state,
+      fan_speed,
+      fan_speed_list,
+      battery_level,
+      battery_icon,
+      friendly_name,
+    } = entity.attributes;
 
+    return {
+      status: status || state || entity.state,
+      fan_speed,
+      fan_speed_list,
+      battery_level,
+      battery_icon,
+      friendly_name,
+    };
+  }
+    
+    renderSource() {
+    const { fan_speed: source, fan_speed_list: sources } = this.getAttributes(
+      this.entity
+    );
+
+    if (!sources) {
+      return html``;
+    }
+
+    const selected = sources.indexOf(source);
+
+    return html`
+      <paper-menu-button
+        slot="dropdown-trigger"
+        .horizontalAlign=${'right'}
+        .verticalAlign=${'top'}
+        .verticalOffset=${40}
+        .noAnimations=${true}
+        @click="${(e) => e.stopPropagation()}"
+      >
+        <paper-button slot="dropdown-trigger">
+          <ha-icon icon="mdi:fan"></ha-icon>
+          <span show=${true}>
+            ${localize(`source.${source}`) || source}
+          </span>
+        </paper-button>
+        <paper-listbox
+          slot="dropdown-content"
+          selected=${selected}
+          @click="${(e) => this.handleSpeed(e)}"
+        >
+          ${sources.map(
+            (item) =>
+              html`<paper-item value=${item}
+                >${localize(`source.${item}`) || item}</paper-item
+              >`
+          )}
+        </paper-listbox>
+      </paper-menu-button>
+    `;
+  }
+
+    handleSpeed(e) {
+    const fan_speed = e.target.getAttribute('value');
+    this.callService('set_fan_speed', false, { fan_speed });
+  }
+    
     render() {
         if (this.outdatedConfig) {
             return this.getConfigurationMigration(this._config);
@@ -234,6 +323,20 @@ class XiaomiVacuumMapCard extends LitElement {
         const rendered = html`
         ${style}
         <ha-card id="xiaomiCard">
+          <div
+          class="preview"
+          @click="${() => this.handleMore()}"
+          ?more-info="true"
+          >
+            <div class="header">
+              <div class="source">
+                ${this.renderSource()}
+              </div>
+              <div class="battery">
+                ${battery_level}% <ha-icon icon="${battery_icon}"></ha-icon>
+              </div>
+            </div>
+          </div>
             <div id="mapWrapper">
                 <div id="map">
                     <img id="mapBackground" @load="${() => this.calculateScale()}" src="${this.map_image}">
